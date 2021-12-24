@@ -35,11 +35,11 @@ RTC_DS1307 rtc;
 
 int32_t PRReading = 0;
 int32_t PRReadingTemp = 0;
-bool tempTimeBinary[20];
-int8_t xArray[20];
-int8_t yArray[20];
+bool realtor[8][8];
 bool gravityMode = false;
+uint8_t DOT_NUM = 0;
 size_t count = 0;
+int8_t mode = 1;
 
 
 class BitDot {
@@ -55,13 +55,15 @@ class BitDot {
     }
 
     // This takes an x and y reading off of the giro along with all the other x y locations of the other dots.
-    void moveDot(int16_t xRead, int16_t yRead, int8_t xArray[], int8_t yArray[]) {
+    void moveDot(int16_t xRead, int16_t yRead) {
       updatePulls(xRead, yRead); // Update the dots pull values
       int8_t tempx = shiftDot(pullx, x); // Creates a theoretical dot in the direction it wants to move. This accounts for the board but not other dots.
       int8_t tempy = shiftDot(pully, y);
-      if (stepCorrect(xArray, yArray, tempx, tempy)) { // This where the dot wants to move against the locations of all the other dots.
+      if (!realtor[tempx][tempy]) { // This where the dot wants to move against the locations of all the other dots.
+        realtor[x][y] = false;  // this dot is no longer at that location
         x = tempx; // If that location was okay move the dot there.
         y = tempy;
+        realtor[x][y] = true; // This dot is now at this location
       }
     }
 
@@ -90,13 +92,6 @@ class BitDot {
       matrix.drawPixel(x, y, color);
     }
 
-    void updatePulls(int16_t xRead, int16_t yRead) {
-      //xMom += xRead / 2;
-      //yMom +=yRead / 2;
-      pullx += (xRead) / 4; // Increment how hard the dot is being pulled by the readings
-      pully += (yRead)/ 4;
-    }
-
   private:
     int8_t boundCheck(int8_t temp, int8_t incr) { // Make sure the new location is on the board.
       temp += incr;
@@ -118,16 +113,12 @@ class BitDot {
       }
       return temp;
     }
-  
-    bool stepCorrect(int8_t xArray[], int8_t yArray[], int8_t &tempx, int8_t &tempy) { // Make sure we aren't hitting any other dots
-      for (int i = 0; i < 20; ++i) {
-        if (xArray[i] == tempx && yArray[i] == tempy) {
-          return false;
-        }
-      }
-      return true;
+
+    void updatePulls(int16_t xRead, int16_t yRead) {
+      pullx += (xRead) / 4; // Increment how hard the dot is being pulled by the readings
+      pully += (yRead)/ 4;
     }
-    
+  
     int32_t pullx;
     int32_t pully;
     int8_t fixedX;
@@ -141,7 +132,7 @@ class BitDot {
 };
 
 // Create our array of 20 bits for this clock
-BitDot BitDots[20];
+BitDot BitDots[24];
 
 void setup() {
   rtc.begin();
@@ -154,8 +145,20 @@ void setup() {
   Serial.begin(115200);
   adxl.measureModeOn();
 
+  // Set all the values on the matrix to open. DO THIS BEFORE YOU BUILD THE CLOCK
+  emptyRealtor();
+
   // Sets the shape of the clock
-  buildClock();
+  switch(mode) {
+    case 0:
+      DOT_NUM = 20;
+      buildClock20Bit();
+      break;
+    case 1:
+      DOT_NUM = 24;
+      buildClock3Byte();
+      break;
+  }
 
   if (! rtc.isrunning()) {
     Serial.println("RTC is NOT running, let's set the time!");
@@ -164,28 +167,31 @@ void setup() {
 }
 
 
-
 void loop() {
+  matrix.clear();
   delay(1);
   if(adxl.dataReady()) {
     adxl.readAccel(); // read all 3 axis, they are stored in class variables: myAdxl.x, myAdxl.y and myAdxl.z
   }
   DateTime now = rtc.now(); // Get the current date
   PRReading = analogRead(PR);
-  setDotTime(now);
-  //updateXYArray();
-  matrix.clear();
+  switch(mode) {
+    case 0:
+      setDotTime20Bit(now);
+      break;
+    case 1:
+      setDotTime3Byte(now);
+      break;
+  }
   if (!goGravityMode(adxl.x)) { // if the thing is getting tipped, lets party!!
     count++;
   } else {
     gravityMode = true;
     count = 1;
   }
-  for (int i = 0; i < 20; ++i) {
+  for (int i = 0; i < DOT_NUM; ++i) {
     if (gravityMode) {
-      BitDots[i].moveDot(adxl.x, adxl.y, xArray, yArray); // move the dot!!
-      xArray[i] = BitDots[i].getXVal(); // update the array with all locations of all the dots
-      yArray[i] = BitDots[i].getYVal();
+      BitDots[i].moveDot(adxl.x, adxl.y); // move the dot!!
     }
     BitDots[i].displayDot();
   }
@@ -197,11 +203,16 @@ void loop() {
 }
 
 
+/**
+ * ====================================20 Bit Clock Logic====================================== 
+ * 
+ */
+
 // This sets the fixed locations of all the dots accoring to the clock.
-void buildClock() {
+void buildClock20Bit() {
   int x = 0;
   int y = 0;
-  for (int i = 0; i < 20; ++i) {
+  for (int i = 0; i < DOT_NUM; ++i) {
     if (i < 4) {
       x = 2 + i;
       y = 6;
@@ -213,10 +224,11 @@ void buildClock() {
       y = 1;
     }
     BitDots[i].setFixedLocation(x, y);
+    realtor[x][y] = true;
   }
 }
 
-void setDotTime(DateTime now) { // This desides what color to display the dot. 
+void setDotTime20Bit(DateTime now) { // This desides what color to display the dot. 
 // set the bits for the hours
   int8_t temp = now.hour();
   if (temp > 12) {
@@ -226,9 +238,9 @@ void setDotTime(DateTime now) { // This desides what color to display the dot.
     int32_t powOfTwo = 0.5 + pow(2, i);
     if (temp - powOfTwo >=0 && temp !=  0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor(true));
+      BitDots[i].setColor(getColor20Bit(true));
     } else {
-      BitDots[i].setColor(getColor(false));
+      BitDots[i].setColor(getColor20Bit(false));
     }
   }
   
@@ -238,9 +250,9 @@ void setDotTime(DateTime now) { // This desides what color to display the dot.
     int32_t powOfTwo = 0.5 + pow(2, (i - 4));
     if (temp - powOfTwo >=0 && temp != 0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor(true));
+      BitDots[i].setColor(getColor20Bit(true));
     } else {
-      BitDots[i].setColor(getColor(false));
+      BitDots[i].setColor(getColor20Bit(false));
     }
   }
 
@@ -250,17 +262,16 @@ void setDotTime(DateTime now) { // This desides what color to display the dot.
     int32_t powOfTwo = 0.5 + pow(2, (i - 12));
     if (temp - powOfTwo >=0 && temp != 0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor(true));
+      BitDots[i].setColor(getColor20Bit(true));
     } else {
-      BitDots[i].setColor(getColor(false));
+      BitDots[i].setColor(getColor20Bit(false));
     }
   }
 }
 
-uint16_t getColor(bool oneOrZero) { // This looks at the photo sensor and returns different color themes depending on brightness
+uint16_t getColor20Bit(bool oneOrZero) { // This looks at the photo sensor and returns different color themes depending on brightness
  //Serial.println(PRReading);
- if (PRReading < HIGH_LIGHT) {
-    //Messing with the set brightness function is a major pain. So here the brightness is adjusted manually but just putting in smaller values.
+ if (PRReading < HIGH_LIGHT) { //Messing with the set brightness function is a major pain. So here the brightness is adjusted manually but just putting in smaller values.
     return oneOrZero ? matrix.Color(50, 20, 0) : matrix.Color(25, 25, 25);
   } else if (PRReading < MED_LIGHT && HIGH_LIGHT <= PRReading) {
     return oneOrZero ? matrix.Color(25, 8, 0) : matrix.Color(8, 4, 8);
@@ -269,13 +280,113 @@ uint16_t getColor(bool oneOrZero) { // This looks at the photo sensor and return
   }
 }
 
+/**
+ * ====================================Byte Clock Logic====================================== 
+ * 
+ */
+
+void buildClock3Byte() {
+  uint8_t x;
+  uint8_t y;
+  uint16_t color = 0;
+  for (int i = 0; i < DOT_NUM; ++i) {
+    if (i < 8) {
+      if (i < 4) {
+        y = 7 - i;
+        x = 7;
+      } else {
+        y = 11 - i;
+        x = 6;
+      }
+    } else if (i < 16 && 8 <= i) {
+      if (i < 12) {
+        x = 4;
+        y = 13 - i;
+      } else {
+        x = 3;
+        y = 17 - i;
+      }
+    } else if (16 <= i) {
+      if (i < 20) {
+        x = 1;
+        y = 19 - i;
+      } else {
+        x = 0;
+        y = 23 - i;
+      }
+    }
+    BitDots[i].setFixedLocation(x, y);
+    realtor[x][y] = true;
+  }
+}
+
+void setDotTime3Byte(DateTime now) { // This desides what color to display the dot. 
+// set the bits for the hours
+  int8_t temp = now.hour();
+  for (int i = 7; i >= 0; --i) {
+    int32_t powOfTwo = 0.5 + pow(2, i);
+    if (temp - powOfTwo >=0 && temp !=  0) {
+      temp -= powOfTwo;
+      BitDots[i].setColor(getColor3Byte(true, i));
+    } else {
+      BitDots[i].setColor(getColor3Byte(false, i));
+    }
+  }
+  
+// Set the bits for the minutes
+  temp = now.minute();
+  for (int i = 15; i >= 8; --i) {
+    int32_t powOfTwo = 0.5 + pow(2, (i - 8));
+    if (temp - powOfTwo >=0 && temp != 0) {
+      temp -= powOfTwo;
+      BitDots[i].setColor(getColor3Byte(true, i));
+    } else {
+      BitDots[i].setColor(getColor3Byte(false, i));
+    }
+  }
+
+// set the bits for the seconds
+  temp = now.second();
+  for (int i = 23; i >= 16; --i) {
+    int32_t powOfTwo = 0.5 + pow(2, (i - 16));
+    if (temp - powOfTwo >=0 && temp != 0) {
+      temp -= powOfTwo;
+      BitDots[i].setColor(getColor3Byte(true, i));
+    } else {
+      BitDots[i].setColor(getColor3Byte(false, i));
+    }
+  }
+}
+
+uint16_t getColor3Byte(bool oneOrZero, int8_t index) {
+  uint8_t brightness = 0;
+  if (PRReading < HIGH_LIGHT) { //Messing with the set brightness function is a major pain. So here the brightness is adjusted manually but just putting in smaller values.
+    brightness = 60;
+  } else if (PRReading < MED_LIGHT && HIGH_LIGHT <= PRReading) {
+    brightness = 30;
+  } else if (MED_LIGHT <= PRReading) {
+    brightness = 20;
+  }
+  if (oneOrZero) {
+    brightness = brightness / 2;
+  }
+  if (index < 8) {
+    return matrix.Color(brightness, 0, 0);
+  } else if (index < 16 && 8 <= index) {
+    return matrix.Color(0, brightness, 0);
+  } else if (16 <= index) {
+    return matrix.Color(0, 0, brightness);
+  }
+}
+
+
 bool goGravityMode(int16_t xval) { // 200 is all it takes to go into gravity mode! This of course senses if the x reading indicates the clock being tipped
   return xval > 200 || -200 > xval;
 }
 
 
 bool isAClock() { // Checks to see if the dots are in clockformation
-  for (int i = 0; i < 20; ++i) {
+  for (int i = 0; i < DOT_NUM; ++i) {
     if (!BitDots[i].isInClockSpot()) {
       return false;
     }
@@ -285,7 +396,16 @@ bool isAClock() { // Checks to see if the dots are in clockformation
 
 
 void resetDots() { // Goes through all the dots and resets them to clock formation.
-  for (int i = 0; i < 20; ++i) {
+  emptyRealtor();
+  for (int i = 0; i < DOT_NUM; ++i) {
     BitDots[i].setToClockSpot();
+  }
+}
+
+void emptyRealtor() {
+  for (int i = 0; i < 8; ++i) {
+    for (int j = 0; j < 8; ++j) {
+      realtor[j][i] = false;
+    }
   }
 }
