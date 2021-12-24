@@ -291,7 +291,6 @@ void buildClock3Byte() {
   uint16_t color = 0;
   for (int i = 0; i < DOT_NUM; ++i) {
     if (i < 8) {
-      color = matrix.Color(15, 0, 0);
       if (i < 4) {
         y = 7 - i;
         x = 7;
@@ -300,7 +299,6 @@ void buildClock3Byte() {
         x = 6;
       }
     } else if (i < 16 && 8 <= i) {
-      color = matrix.Color(0, 15, 0);
       if (i < 12) {
         x = 4;
         y = 13 - i;
@@ -309,7 +307,6 @@ void buildClock3Byte() {
         y = 17 - i;
       }
     } else if (16 <= i) {
-      color = matrix.Color(0, 0, 15); 
       if (i < 20) {
         x = 1;
         y = 19 - i;
@@ -318,17 +315,68 @@ void buildClock3Byte() {
         y = 23 - i;
       }
     }
-    BitDots[i].setColor(color);
     BitDots[i].setFixedLocation(x, y);
     realtor[x][y] = true;
   }
 }
 
-void setDotTime3Byte(DateTime now) {
+void setDotTime3Byte(DateTime now) { // This desides what color to display the dot. 
+// set the bits for the hours
+  int8_t temp = now.hour();
+  for (int i = 7; i >= 0; --i) {
+    int32_t powOfTwo = 0.5 + pow(2, i);
+    if (temp - powOfTwo >=0 && temp !=  0) {
+      temp -= powOfTwo;
+      BitDots[i].setColor(getColor3Byte(true, i));
+    } else {
+      BitDots[i].setColor(getColor3Byte(false, i));
+    }
+  }
+  
+// Set the bits for the minutes
+  temp = now.minute();
+  for (int i = 15; i >= 8; --i) {
+    int32_t powOfTwo = 0.5 + pow(2, (i - 8));
+    if (temp - powOfTwo >=0 && temp != 0) {
+      temp -= powOfTwo;
+      BitDots[i].setColor(getColor3Byte(true, i));
+    } else {
+      BitDots[i].setColor(getColor3Byte(false, i));
+    }
+  }
+
+// set the bits for the seconds
+  temp = now.second();
+  for (int i = 23; i >= 16; --i) {
+    int32_t powOfTwo = 0.5 + pow(2, (i - 16));
+    if (temp - powOfTwo >=0 && temp != 0) {
+      temp -= powOfTwo;
+      BitDots[i].setColor(getColor3Byte(true, i));
+    } else {
+      BitDots[i].setColor(getColor3Byte(false, i));
+    }
+  }
 }
 
-uint16_t getColor3Byte() {
-
+uint16_t getColor3Byte(bool oneOrZero, int8_t index) {
+  uint8_t brightness = 0;
+  if (PRReading < HIGH_LIGHT) { //Messing with the set brightness function is a major pain. So here the brightness is adjusted manually but just putting in smaller values.
+    brightness = 60;
+  } else if (PRReading < MED_LIGHT && HIGH_LIGHT <= PRReading) {
+    brightness = 30;
+  } else if (MED_LIGHT <= PRReading) {
+    brightness = 20;
+  }
+  if (oneOrZero) {
+    brightness = brightness / 2;
+  }
+  if (index < 8) {
+    return matrix.Color(brightness, 0, 0);
+  } else if (index < 16 && 8 <= index) {
+    return matrix.Color(0, brightness, 0);
+  } else if (16 <= index) {
+    return matrix.Color(0, 0, brightness);
+  }
 }
 
 
