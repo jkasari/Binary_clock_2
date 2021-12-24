@@ -39,7 +39,7 @@ bool realtor[8][8];
 bool gravityMode = false;
 uint8_t DOT_NUM = 0;
 size_t count = 0;
-int8_t mode = 0;
+int8_t mode = 1;
 
 
 class BitDot {
@@ -296,7 +296,7 @@ void buildClock3Byte() {
         y = 7 - i;
         x = 7;
       } else {
-        y = 11 - y;
+        y = 11 - i;
         x = 6;
       }
     } else if (i < 16 && 8 <= i) {
