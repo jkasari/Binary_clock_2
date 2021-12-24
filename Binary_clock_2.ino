@@ -25,6 +25,7 @@ ADXL313 adxl;
 #define PR A1
 #define MED_LIGHT 550
 #define HIGH_LIGHT 340
+#define DOT_NUM 20
 
 // Declare a matrix
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(8, 8, PIN,
@@ -38,6 +39,7 @@ int32_t PRReadingTemp = 0;
 bool tempTimeBinary[20];
 int8_t xArray[20];
 int8_t yArray[20];
+bool realtor[8][8];
 bool gravityMode = false;
 size_t count = 0;
 
@@ -59,9 +61,11 @@ class BitDot {
       updatePulls(xRead, yRead); // Update the dots pull values
       int8_t tempx = shiftDot(pullx, x); // Creates a theoretical dot in the direction it wants to move. This accounts for the board but not other dots.
       int8_t tempy = shiftDot(pully, y);
-      if (stepCorrect(xArray, yArray, tempx, tempy)) { // This where the dot wants to move against the locations of all the other dots.
+      if (!realtor[tempx][tempy]) { // This where the dot wants to move against the locations of all the other dots.
+        realtor[x][y] = false;
         x = tempx; // If that location was okay move the dot there.
         y = tempy;
+        realtor[x][y] = true;
       }
     }
 
@@ -120,7 +124,7 @@ class BitDot {
     }
   
     bool stepCorrect(int8_t xArray[], int8_t yArray[], int8_t &tempx, int8_t &tempy) { // Make sure we aren't hitting any other dots
-      for (int i = 0; i < 20; ++i) {
+      for (int i = 0; i < DOT_NUM; ++i) {
         if (xArray[i] == tempx && yArray[i] == tempy) {
           return false;
         }
@@ -154,6 +158,9 @@ void setup() {
   Serial.begin(115200);
   adxl.measureModeOn();
 
+  // Set all the values on the matrix to open. DO THIS BEFORE YOU BUILD THE CLOCK
+  emptyRealtor();
+
   // Sets the shape of the clock
   buildClock();
 
@@ -181,11 +188,11 @@ void loop() {
     gravityMode = true;
     count = 1;
   }
-  for (int i = 0; i < 20; ++i) {
+  for (int i = 0; i < DOT_NUM; ++i) {
     if (gravityMode) {
       BitDots[i].moveDot(adxl.x, adxl.y, xArray, yArray); // move the dot!!
-      xArray[i] = BitDots[i].getXVal(); // update the array with all locations of all the dots
-      yArray[i] = BitDots[i].getYVal();
+      //xArray[i] = BitDots[i].getXVal(); // update the array with all locations of all the dots
+      //yArray[i] = BitDots[i].getYVal();
     }
     BitDots[i].displayDot();
   }
@@ -201,7 +208,7 @@ void loop() {
 void buildClock() {
   int x = 0;
   int y = 0;
-  for (int i = 0; i < 20; ++i) {
+  for (int i = 0; i < DOT_NUM; ++i) {
     if (i < 4) {
       x = 2 + i;
       y = 6;
@@ -213,6 +220,7 @@ void buildClock() {
       y = 1;
     }
     BitDots[i].setFixedLocation(x, y);
+    realtor[x][y] = true;
   }
 }
 
@@ -259,8 +267,7 @@ void setDotTime(DateTime now) { // This desides what color to display the dot.
 
 uint16_t getColor(bool oneOrZero) { // This looks at the photo sensor and returns different color themes depending on brightness
  //Serial.println(PRReading);
- if (PRReading < HIGH_LIGHT) {
-    //Messing with the set brightness function is a major pain. So here the brightness is adjusted manually but just putting in smaller values.
+ if (PRReading < HIGH_LIGHT) { //Messing with the set brightness function is a major pain. So here the brightness is adjusted manually but just putting in smaller values.
     return oneOrZero ? matrix.Color(50, 20, 0) : matrix.Color(25, 25, 25);
   } else if (PRReading < MED_LIGHT && HIGH_LIGHT <= PRReading) {
     return oneOrZero ? matrix.Color(25, 8, 0) : matrix.Color(8, 4, 8);
@@ -275,7 +282,7 @@ bool goGravityMode(int16_t xval) { // 200 is all it takes to go into gravity mod
 
 
 bool isAClock() { // Checks to see if the dots are in clockformation
-  for (int i = 0; i < 20; ++i) {
+  for (int i = 0; i < DOT_NUM; ++i) {
     if (!BitDots[i].isInClockSpot()) {
       return false;
     }
@@ -285,7 +292,15 @@ bool isAClock() { // Checks to see if the dots are in clockformation
 
 
 void resetDots() { // Goes through all the dots and resets them to clock formation.
-  for (int i = 0; i < 20; ++i) {
+  for (int i = 0; i < DOT_NUM; ++i) {
     BitDots[i].setToClockSpot();
+  }
+}
+
+void emptyRealtor() {
+  for (int i = 0; i < 8; ++i) {
+    for (int j = 0; j < 8; ++j) {
+      realtor[j][i] = false;
+    }
   }
 }
