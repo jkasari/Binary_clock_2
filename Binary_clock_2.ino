@@ -37,8 +37,6 @@ RTC_DS1307 rtc;
 int32_t PRReading = 0;
 int32_t PRReadingTemp = 0;
 bool tempTimeBinary[20];
-int8_t xArray[20];
-int8_t yArray[20];
 bool realtor[8][8];
 bool gravityMode = false;
 size_t count = 0;
@@ -57,15 +55,15 @@ class BitDot {
     }
 
     // This takes an x and y reading off of the giro along with all the other x y locations of the other dots.
-    void moveDot(int16_t xRead, int16_t yRead, int8_t xArray[], int8_t yArray[]) {
+    void moveDot(int16_t xRead, int16_t yRead) {
       updatePulls(xRead, yRead); // Update the dots pull values
       int8_t tempx = shiftDot(pullx, x); // Creates a theoretical dot in the direction it wants to move. This accounts for the board but not other dots.
       int8_t tempy = shiftDot(pully, y);
       if (!realtor[tempx][tempy]) { // This where the dot wants to move against the locations of all the other dots.
-        realtor[x][y] = false;
+        realtor[x][y] = false;  // this dot is no longer at that location
         x = tempx; // If that location was okay move the dot there.
         y = tempy;
-        realtor[x][y] = true;
+        realtor[x][y] = true; // This dot is now at this location
       }
     }
 
@@ -94,13 +92,6 @@ class BitDot {
       matrix.drawPixel(x, y, color);
     }
 
-    void updatePulls(int16_t xRead, int16_t yRead) {
-      //xMom += xRead / 2;
-      //yMom +=yRead / 2;
-      pullx += (xRead) / 4; // Increment how hard the dot is being pulled by the readings
-      pully += (yRead)/ 4;
-    }
-
   private:
     int8_t boundCheck(int8_t temp, int8_t incr) { // Make sure the new location is on the board.
       temp += incr;
@@ -122,16 +113,12 @@ class BitDot {
       }
       return temp;
     }
-  
-    bool stepCorrect(int8_t xArray[], int8_t yArray[], int8_t &tempx, int8_t &tempy) { // Make sure we aren't hitting any other dots
-      for (int i = 0; i < DOT_NUM; ++i) {
-        if (xArray[i] == tempx && yArray[i] == tempy) {
-          return false;
-        }
-      }
-      return true;
+
+    void updatePulls(int16_t xRead, int16_t yRead) {
+      pullx += (xRead) / 4; // Increment how hard the dot is being pulled by the readings
+      pully += (yRead)/ 4;
     }
-    
+  
     int32_t pullx;
     int32_t pully;
     int8_t fixedX;
@@ -179,8 +166,7 @@ void loop() {
   }
   DateTime now = rtc.now(); // Get the current date
   PRReading = analogRead(PR);
-  setDotTime(now);
-  //updateXYArray();
+  setDotTime20Bit(now);
   matrix.clear();
   if (!goGravityMode(adxl.x)) { // if the thing is getting tipped, lets party!!
     count++;
@@ -190,9 +176,7 @@ void loop() {
   }
   for (int i = 0; i < DOT_NUM; ++i) {
     if (gravityMode) {
-      BitDots[i].moveDot(adxl.x, adxl.y, xArray, yArray); // move the dot!!
-      //xArray[i] = BitDots[i].getXVal(); // update the array with all locations of all the dots
-      //yArray[i] = BitDots[i].getYVal();
+      BitDots[i].moveDot(adxl.x, adxl.y); // move the dot!!
     }
     BitDots[i].displayDot();
   }
@@ -224,7 +208,7 @@ void buildClock() {
   }
 }
 
-void setDotTime(DateTime now) { // This desides what color to display the dot. 
+void setDotTime20Bit(DateTime now) { // This desides what color to display the dot. 
 // set the bits for the hours
   int8_t temp = now.hour();
   if (temp > 12) {
