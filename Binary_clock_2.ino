@@ -39,7 +39,7 @@ bool realtor[8][8];
 bool gravityMode = false;
 uint8_t DOT_NUM = 0;
 size_t count = 0;
-int8_t mode = 1;
+int8_t mode = 0;
 
 
 class BitDot {
