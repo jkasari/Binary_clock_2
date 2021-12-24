@@ -25,7 +25,6 @@ ADXL313 adxl;
 #define PR A1
 #define MED_LIGHT 550
 #define HIGH_LIGHT 340
-#define DOT_NUM 20
 
 // Declare a matrix
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(8, 8, PIN,
@@ -36,10 +35,11 @@ RTC_DS1307 rtc;
 
 int32_t PRReading = 0;
 int32_t PRReadingTemp = 0;
-bool tempTimeBinary[20];
 bool realtor[8][8];
 bool gravityMode = false;
+uint8_t DOT_NUM = 0;
 size_t count = 0;
+int8_t mode = 0;
 
 
 class BitDot {
@@ -132,7 +132,7 @@ class BitDot {
 };
 
 // Create our array of 20 bits for this clock
-BitDot BitDots[20];
+BitDot BitDots[24];
 
 void setup() {
   rtc.begin();
@@ -149,7 +149,16 @@ void setup() {
   emptyRealtor();
 
   // Sets the shape of the clock
-  buildClock();
+  switch(mode) {
+    case 0:
+      DOT_NUM = 20;
+      buildClock20Bit();
+      break;
+    case 1:
+      DOT_NUM = 24;
+      buildClock3Byte();
+      break;
+  }
 
   if (! rtc.isrunning()) {
     Serial.println("RTC is NOT running, let's set the time!");
@@ -158,16 +167,22 @@ void setup() {
 }
 
 
-
 void loop() {
+  matrix.clear();
   delay(1);
   if(adxl.dataReady()) {
     adxl.readAccel(); // read all 3 axis, they are stored in class variables: myAdxl.x, myAdxl.y and myAdxl.z
   }
   DateTime now = rtc.now(); // Get the current date
   PRReading = analogRead(PR);
-  setDotTime20Bit(now);
-  matrix.clear();
+  switch(mode) {
+    case 0:
+      setDotTime20Bit(now);
+      break;
+    case 1:
+      setDotTime3Byte(now);
+      break;
+  }
   if (!goGravityMode(adxl.x)) { // if the thing is getting tipped, lets party!!
     count++;
   } else {
@@ -188,8 +203,13 @@ void loop() {
 }
 
 
+/**
+ * ====================================20 Bit Clock Logic====================================== 
+ * 
+ */
+
 // This sets the fixed locations of all the dots accoring to the clock.
-void buildClock() {
+void buildClock20Bit() {
   int x = 0;
   int y = 0;
   for (int i = 0; i < DOT_NUM; ++i) {
@@ -218,9 +238,9 @@ void setDotTime20Bit(DateTime now) { // This desides what color to display the d
     int32_t powOfTwo = 0.5 + pow(2, i);
     if (temp - powOfTwo >=0 && temp !=  0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor(true));
+      BitDots[i].setColor(getColor20Bit(true));
     } else {
-      BitDots[i].setColor(getColor(false));
+      BitDots[i].setColor(getColor20Bit(false));
     }
   }
   
@@ -230,9 +250,9 @@ void setDotTime20Bit(DateTime now) { // This desides what color to display the d
     int32_t powOfTwo = 0.5 + pow(2, (i - 4));
     if (temp - powOfTwo >=0 && temp != 0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor(true));
+      BitDots[i].setColor(getColor20Bit(true));
     } else {
-      BitDots[i].setColor(getColor(false));
+      BitDots[i].setColor(getColor20Bit(false));
     }
   }
 
@@ -242,14 +262,14 @@ void setDotTime20Bit(DateTime now) { // This desides what color to display the d
     int32_t powOfTwo = 0.5 + pow(2, (i - 12));
     if (temp - powOfTwo >=0 && temp != 0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor(true));
+      BitDots[i].setColor(getColor20Bit(true));
     } else {
-      BitDots[i].setColor(getColor(false));
+      BitDots[i].setColor(getColor20Bit(false));
     }
   }
 }
 
-uint16_t getColor(bool oneOrZero) { // This looks at the photo sensor and returns different color themes depending on brightness
+uint16_t getColor20Bit(bool oneOrZero) { // This looks at the photo sensor and returns different color themes depending on brightness
  //Serial.println(PRReading);
  if (PRReading < HIGH_LIGHT) { //Messing with the set brightness function is a major pain. So here the brightness is adjusted manually but just putting in smaller values.
     return oneOrZero ? matrix.Color(50, 20, 0) : matrix.Color(25, 25, 25);
@@ -259,6 +279,58 @@ uint16_t getColor(bool oneOrZero) { // This looks at the photo sensor and return
     return oneOrZero ? matrix.Color(8, 0, 0) : matrix.Color(0, 4, 8);
   }
 }
+
+/**
+ * ====================================Byte Clock Logic====================================== 
+ * 
+ */
+
+void buildClock3Byte() {
+  uint8_t x;
+  uint8_t y;
+  uint16_t color = 0;
+  for (int i = 0; i < DOT_NUM; ++i) {
+    if (i < 8) {
+      color = matrix.Color(15, 0, 0);
+      if (i < 4) {
+        y = 7 - i;
+        x = 7;
+      } else {
+        y = 11 - y;
+        x = 6;
+      }
+    } else if (i < 16 && 8 <= i) {
+      color = matrix.Color(0, 15, 0);
+      if (i < 12) {
+        x = 4;
+        y = 13 - i;
+      } else {
+        x = 3;
+        y = 17 - i;
+      }
+    } else if (16 <= i) {
+      color = matrix.Color(0, 0, 15); 
+      if (i < 20) {
+        x = 1;
+        y = 19 - i;
+      } else {
+        x = 0;
+        y = 23 - i;
+      }
+    }
+    BitDots[i].setColor(color);
+    BitDots[i].setFixedLocation(x, y);
+    realtor[x][y] = true;
+  }
+}
+
+void setDotTime3Byte(DateTime now) {
+}
+
+uint16_t getColor3Byte() {
+
+}
+
 
 bool goGravityMode(int16_t xval) { // 200 is all it takes to go into gravity mode! This of course senses if the x reading indicates the clock being tipped
   return xval > 200 || -200 > xval;
@@ -276,6 +348,7 @@ bool isAClock() { // Checks to see if the dots are in clockformation
 
 
 void resetDots() { // Goes through all the dots and resets them to clock formation.
+  emptyRealtor();
   for (int i = 0; i < DOT_NUM; ++i) {
     BitDots[i].setToClockSpot();
   }
