@@ -23,6 +23,7 @@ ADXL313 adxl;
 
 #define PIN 5
 #define PR A1
+#define BUTT_PIN 12
 #define MED_LIGHT 550
 #define HIGH_LIGHT 340
 
@@ -39,7 +40,8 @@ bool realtor[8][8];
 bool gravityMode = false;
 uint8_t DOT_NUM = 0;
 size_t count = 0;
-int8_t mode = 1;
+int8_t mode = 0;
+int8_t modeLimit = 1;
 
 
 class BitDot {
@@ -141,6 +143,7 @@ void setup() {
   matrix.begin();
   matrix.setBrightness(255);
   pinMode(PIN, OUTPUT);
+  pinMode(BUTT_PIN, INPUT_PULLUP);
   pinMode(PR, INPUT);
   Serial.begin(115200);
   adxl.measureModeOn();
@@ -175,6 +178,19 @@ void loop() {
   }
   DateTime now = rtc.now(); // Get the current date
   PRReading = analogRead(PR);
+  if (buttonCheck()) {
+    switch (mode) {
+    case 0:
+      DOT_NUM = 20;
+      buildClock20Bit();
+      break;
+    
+    case 1:
+      DOT_NUM = 24;
+      buildClock3Byte();
+      break;
+    }
+  }
   switch(mode) {
     case 0:
       setDotTime20Bit(now);
@@ -276,7 +292,7 @@ uint16_t getColor20Bit(bool oneOrZero) { // This looks at the photo sensor and r
   } else if (PRReading < MED_LIGHT && HIGH_LIGHT <= PRReading) {
     return oneOrZero ? matrix.Color(25, 8, 0) : matrix.Color(8, 4, 8);
   } else if (MED_LIGHT <= PRReading) {
-    return oneOrZero ? matrix.Color(8, 0, 0) : matrix.Color(0, 4, 8);
+    return oneOrZero ? matrix.Color(8, 0, 0) : matrix.Color(0, 4, 0);
   }
 }
 
@@ -322,38 +338,35 @@ void buildClock3Byte() {
 
 void setDotTime3Byte(DateTime now) { // This desides what color to display the dot. 
 // set the bits for the hours
-  int8_t temp = now.hour();
-  for (int i = 7; i >= 0; --i) {
-    int32_t powOfTwo = 0.5 + pow(2, i);
-    if (temp - powOfTwo >=0 && temp !=  0) {
-      temp -= powOfTwo;
-      BitDots[i].setColor(getColor3Byte(true, i));
-    } else {
-      BitDots[i].setColor(getColor3Byte(false, i));
-    }
-  }
+  int8_t temp1st = floor(now.hour() / 10);
+  int8_t temp2nd = now.hour() % 10;
+  setDigitToByte(temp1st, 0);
+  setDigitToByte(temp2nd, 4);
   
 // Set the bits for the minutes
-  temp = now.minute();
-  for (int i = 15; i >= 8; --i) {
-    int32_t powOfTwo = 0.5 + pow(2, (i - 8));
-    if (temp - powOfTwo >=0 && temp != 0) {
-      temp -= powOfTwo;
-      BitDots[i].setColor(getColor3Byte(true, i));
-    } else {
-      BitDots[i].setColor(getColor3Byte(false, i));
-    }
-  }
+  temp1st = floor(now.minute() / 10);
+  temp2nd = now.minute() % 10;
+  setDigitToByte(temp1st, 8);
+  setDigitToByte(temp2nd, 12);
 
 // set the bits for the seconds
-  temp = now.second();
-  for (int i = 23; i >= 16; --i) {
-    int32_t powOfTwo = 0.5 + pow(2, (i - 16));
-    if (temp - powOfTwo >=0 && temp != 0) {
-      temp -= powOfTwo;
-      BitDots[i].setColor(getColor3Byte(true, i));
+  temp1st = floor(now.second() / 10);
+  temp2nd = now.second() % 10;
+  setDigitToByte(temp1st, 16);
+  setDigitToByte(temp2nd, 20);
+}
+
+// Helper function that takes in the digit you want to make into a byte and how far in the bitdot array you want to store this byte.
+void setDigitToByte(int8_t digit, int8_t dotIndex) {
+  for (int i = 0; i < 4; ++i) {
+    int32_t powOfTwo = 0.5 + pow(2, 3 - i);
+    int8_t check = digit - powOfTwo;
+    int8_t adjustedIndex = i + dotIndex;
+    if (check >= 0) {
+      BitDots[adjustedIndex].setColor(getColor3Byte(true, adjustedIndex));
+      digit = check;
     } else {
-      BitDots[i].setColor(getColor3Byte(false, i));
+      BitDots[adjustedIndex].setColor(getColor3Byte(false, adjustedIndex));
     }
   }
 }
@@ -367,15 +380,12 @@ uint16_t getColor3Byte(bool oneOrZero, int8_t index) {
   } else if (MED_LIGHT <= PRReading) {
     brightness = 20;
   }
-  if (oneOrZero) {
-    brightness = brightness / 2;
-  }
   if (index < 8) {
-    return matrix.Color(brightness, 0, 0);
+    return !oneOrZero ? matrix.Color(brightness / 2, 0, 0) : matrix.Color(brightness, brightness / 3, 0);
   } else if (index < 16 && 8 <= index) {
-    return matrix.Color(0, brightness, 0);
+    return !oneOrZero ? matrix.Color(0, brightness / 2, 0) : matrix.Color(brightness / 2, brightness, brightness);
   } else if (16 <= index) {
-    return matrix.Color(0, 0, brightness);
+    return !oneOrZero ? matrix.Color(0, 0, brightness) : matrix.Color(0, brightness  / 2, brightness);
   }
 }
 
@@ -402,10 +412,30 @@ void resetDots() { // Goes through all the dots and resets them to clock formati
   }
 }
 
+// Go through the realtor and wipe all memory of dot locations.
 void emptyRealtor() {
   for (int i = 0; i < 8; ++i) {
     for (int j = 0; j < 8; ++j) {
       realtor[j][i] = false;
     }
   }
+}
+
+// Check to see if the button has been pressed. Return true if the mode has changed. 
+bool buttonCheck() {
+  uint32_t buttonTimer = 0;
+  uint32_t halfSec = 500;
+  if (digitalRead(BUTT_PIN) == LOW) {
+    while(digitalRead(BUTT_PIN) == LOW) {
+      buttonTimer += 1;
+      delay(1);
+    }
+    if (50 < buttonTimer && buttonTimer < halfSec) { mode += 1; }
+    if (halfSec < buttonTimer) { mode -= 1; }
+    if (mode > modeLimit) { mode = 0; }
+    if (0 > mode) { mode = modeLimit; }
+    emptyRealtor();
+    return true; // Yes the mode has been changed.
+  }
+  return false; // No the mode has not been changed.
 }
