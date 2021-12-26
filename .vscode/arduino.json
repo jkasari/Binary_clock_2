@@ -1,5 +1,7 @@
 {
-    "port": "/dev/ttyUSB0",
     "board": "arduino:avr:nano",
-    "sketch": "Binary_clock_2.ino"
+    "port": "/dev/ttyUSB0",
+    "programmer": "arduino:avrispmkii",
+    "sketch": "Binary_clock_2.ino",
+    "configuration": "cpu=atmega328"
 }

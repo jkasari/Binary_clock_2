@@ -41,7 +41,7 @@ bool gravityMode = false;
 uint8_t DOT_NUM = 0;
 size_t count = 0;
 int8_t mode = 0;
-int8_t modeLimit = 1;
+int8_t modeLimit = 2;
 
 
 class BitDot {
@@ -152,17 +152,7 @@ void setup() {
   emptyRealtor();
 
   // Sets the shape of the clock
-  switch(mode) {
-    case 0:
-      DOT_NUM = 20;
-      buildClock20Bit();
-      break;
-    case 1:
-      DOT_NUM = 24;
-      buildClock3Byte();
-      break;
-  }
-
+  setClockMode();
   if (! rtc.isrunning()) {
     Serial.println("RTC is NOT running, let's set the time!");
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -179,17 +169,7 @@ void loop() {
   DateTime now = rtc.now(); // Get the current date
   PRReading = analogRead(PR);
   if (buttonCheck()) {
-    switch (mode) {
-    case 0:
-      DOT_NUM = 20;
-      buildClock20Bit();
-      break;
-    
-    case 1:
-      DOT_NUM = 24;
-      buildClock3Byte();
-      break;
-    }
+    setClockMode();
   }
   switch(mode) {
     case 0:
@@ -197,6 +177,9 @@ void loop() {
       break;
     case 1:
       setDotTime3Byte(now);
+      break;
+    case 2:
+      setDotTime16Bit(now);
       break;
   }
   if (!goGravityMode(adxl.x)) { // if the thing is getting tipped, lets party!!
@@ -296,6 +279,7 @@ uint16_t getColor20Bit(bool oneOrZero) { // This looks at the photo sensor and r
   }
 }
 
+
 /**
  * ====================================Byte Clock Logic====================================== 
  * 
@@ -389,6 +373,89 @@ uint16_t getColor3Byte(bool oneOrZero, int8_t index) {
   }
 }
 
+/**
+ * ====================================16Bit Clock Logic====================================== 
+ * 
+ */
+
+// This sets the fixed locations of all the dots accoring to the clock.
+void buildClock16Bit() {
+  int x = 0;
+  int y = 0;
+  for (int i = 0; i < DOT_NUM; ++i) {
+    if (i < 4) {
+      x = 2 + i;
+      y = 6;
+    } else if (i < 10 && 4 <= i) {
+      x = i - 3;
+      y = 3;
+    } else if (10 <= i) {
+      x = i - 9;
+      y = 1;
+    }
+    BitDots[i].setFixedLocation(x, y);
+    realtor[x][y] = true;
+  }
+}
+
+void setDotTime16Bit(DateTime now) { // This desides what color to display the dot. 
+// set the bits for the hours
+  int8_t temp = now.hour();
+  if (temp > 12) {
+    temp -= 12;
+  }
+  for (int i = 3; i >= 0; --i) {
+    int32_t powOfTwo = 0.5 + pow(2, i);
+    if (temp - powOfTwo >=0 && temp !=  0) {
+      temp -= powOfTwo;
+      BitDots[i].setColor(getColor16Bit(true, i));
+    } else {
+      BitDots[i].setColor(getColor16Bit(false, i));
+    }
+  }
+  
+// Set the bits for the minutes
+  temp = now.minute();
+  for (int i = 9; i >= 4; --i) {
+    int32_t powOfTwo = 0.5 + pow(2, (i - 4));
+    if (temp - powOfTwo >=0 && temp != 0) {
+      temp -= powOfTwo;
+      BitDots[i].setColor(getColor16Bit(true, i));
+    } else {
+      BitDots[i].setColor(getColor16Bit(false, i));
+    }
+  }
+
+// set the bits for the seconds
+  temp = now.second();
+  for (int i = 15; i >= 10; --i) {
+    int32_t powOfTwo = 0.5 + pow(2, (i - 10));
+    if (temp - powOfTwo >=0 && temp != 0) {
+      temp -= powOfTwo;
+      BitDots[i].setColor(getColor16Bit(true, i));
+    } else {
+      BitDots[i].setColor(getColor16Bit(false, i));
+    }
+  }
+}
+
+uint16_t getColor16Bit(bool oneOrZero, int8_t index) {
+  uint8_t brightness = 0;
+  if (PRReading < HIGH_LIGHT) { //Messing with the set brightness function is a major pain. So here the brightness is adjusted manually but just putting in smaller values.
+    brightness = 60;
+  } else if (PRReading < MED_LIGHT && HIGH_LIGHT <= PRReading) {
+    brightness = 30;
+  } else if (MED_LIGHT <= PRReading) {
+    brightness = 20;
+  }
+  if (index < 4) {
+    return !oneOrZero ? matrix.Color(brightness / 2, 0, 0) : matrix.Color(brightness, brightness / 3, 0);
+  } else if (index < 10 && 4 <= index) {
+    return !oneOrZero ? matrix.Color(0, brightness / 2, 0) : matrix.Color(brightness / 2, brightness, brightness);
+  } else if (10 <= index) {
+    return !oneOrZero ? matrix.Color(0, 0, brightness) : matrix.Color(0, brightness  / 2, brightness);
+  }
+}
 
 bool goGravityMode(int16_t xval) { // 200 is all it takes to go into gravity mode! This of course senses if the x reading indicates the clock being tipped
   return xval > 200 || -200 > xval;
@@ -438,4 +505,21 @@ bool buttonCheck() {
     return true; // Yes the mode has been changed.
   }
   return false; // No the mode has not been changed.
+}
+
+void setClockMode() {
+  switch(mode) {
+    case 0:
+      DOT_NUM = 20;
+      buildClock20Bit();
+      break;
+    case 1:
+      DOT_NUM = 24;
+      buildClock3Byte();
+      break;
+    case 2:
+      DOT_NUM = 16;
+      buildClock16Bit();
+      break;
+  }
 }
