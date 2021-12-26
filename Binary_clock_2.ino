@@ -86,12 +86,21 @@ class BitDot {
       return x;
     }
     
-    void setColor(uint16_t newCol) {
-      color = newCol;
+    void setColor(uint16_t newCol0, uint16_t newCol1) {
+      color0 = newCol0;
+      color1 = newCol0;
     }
 
     void displayDot() {
-      matrix.drawPixel(x, y, color);
+      if (zero) {
+        matrix.drawPixel(x, y, color0);
+      } else {
+        matrix.drawPixel(x, y, color1);
+      }
+    }
+
+    void setZeroOrOne(bool pos) {
+      zero = pos;
     }
 
   private:
@@ -127,9 +136,11 @@ class BitDot {
     int8_t fixedY;
     int8_t xMom;
     int8_t yMom;
-    uint16_t color;
+    uint16_t color0;
+    uint16_t color1;
     int8_t x;
     int8_t y;
+    bool zero = true;
   
 };
 
@@ -237,9 +248,9 @@ void setDotTime20Bit(DateTime now) { // This desides what color to display the d
     int32_t powOfTwo = 0.5 + pow(2, i);
     if (temp - powOfTwo >=0 && temp !=  0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor20Bit(true));
+      BitDots[i].setZeroOrOne(true);
     } else {
-      BitDots[i].setColor(getColor20Bit(false));
+      BitDots[i].setZeroOrOne(false);
     }
   }
   
@@ -249,9 +260,9 @@ void setDotTime20Bit(DateTime now) { // This desides what color to display the d
     int32_t powOfTwo = 0.5 + pow(2, (i - 4));
     if (temp - powOfTwo >=0 && temp != 0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor20Bit(true));
+      BitDots[i].setZeroOrOne(true);
     } else {
-      BitDots[i].setColor(getColor20Bit(false));
+      BitDots[i].setZeroOrOne(false);
     }
   }
 
@@ -261,21 +272,21 @@ void setDotTime20Bit(DateTime now) { // This desides what color to display the d
     int32_t powOfTwo = 0.5 + pow(2, (i - 12));
     if (temp - powOfTwo >=0 && temp != 0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor20Bit(true));
+      BitDots[i].setZeroOrOne(true);
     } else {
-      BitDots[i].setColor(getColor20Bit(false));
+      BitDots[i].setZeroOrOne(false);
     }
   }
 }
 
-uint16_t getColor20Bit(bool oneOrZero) { // This looks at the photo sensor and returns different color themes depending on brightness
+uint16_t getColor20Bit(int8_t index) { // This looks at the photo sensor and returns different color themes depending on brightness
  //Serial.println(PRReading);
  if (PRReading < HIGH_LIGHT) { //Messing with the set brightness function is a major pain. So here the brightness is adjusted manually but just putting in smaller values.
-    return oneOrZero ? matrix.Color(50, 20, 0) : matrix.Color(25, 25, 25);
+    BitDots[index].setColor(matrix.Color(50, 20, 0), matrix.Color(25, 25, 25));
   } else if (PRReading < MED_LIGHT && HIGH_LIGHT <= PRReading) {
-    return oneOrZero ? matrix.Color(25, 8, 0) : matrix.Color(8, 4, 8);
+    BitDots[index].setColor(matrix.Color(25, 8, 0), matrix.Color(8, 4, 8));
   } else if (MED_LIGHT <= PRReading) {
-    return oneOrZero ? matrix.Color(8, 0, 0) : matrix.Color(0, 4, 0);
+    BitDots[index].setColor(matrix.Color(8, 0, 0), matrix.Color(0, 4, 0));
   }
 }
 
