@@ -83,16 +83,42 @@ class BitDot {
       color1 = newCol1;
     }
 
+    void setColor(uint8_t newR0, uint8_t newG0, uint8_t newB0, uint8_t newR1, uint8_t newG1, uint8_t newB1) {
+      red0 = newR0;
+      green0 = newG0;
+      blue0 = newB0;
+
+      red1 = newR1;
+      green1 = newG1;
+      blue1 = newB1;
+    }
+
+
     void displayDot() {
-      if (zero) {
-        matrix.drawPixel(x, y, color0);
+      if (fading) {
+        fadeDot();
       } else {
-        matrix.drawPixel(x, y, color1);
+        if (zero) {
+          matrix.drawPixel(x, y, matrix.Color(red0, green0, blue0));
+        } else {
+          matrix.drawPixel(x, y, matrix.Color(red1, green1, blue1));
+        }
       }
     }
 
     void setZeroOrOne(bool pos) {
-      zero = pos;
+      if (zero != pos) {
+        fading = true;
+        if (zero) {
+          tempRed = red0;
+          tempGreen = green0;
+          tempBlue = blue0;
+        } else {
+          tempRed = red1;
+          tempGreen = green1;
+          tempBlue = blue1;
+        }
+      }
     }
 
   private:
@@ -121,18 +147,62 @@ class BitDot {
       pullx += (xRead) / 4; // Increment how hard the dot is being pulled by the readings
       pully += (yRead)/ 4;
     }
+
+    void fadeDot() {
+      int8_t rate = 100;
+      if (zero) {
+        tempRed -= (red0 - red1) / rate;
+        tempGreen -= (green0 - green1) / rate;
+        tempBlue -= (blue0 - blue1) / rate;
+        matrix.drawPixel(x, y, matrix.Color(tempRed, tempGreen, tempBlue));
+        if (colorCheck(matrix.Color(tempRed, tempGreen, tempBlue), matrix.Color(red1, green1, blue1))) {
+          fading = false;
+          zero = false;
+        }
+      } else {
+        tempRed -= (red1 - red0) / rate;
+        tempGreen -= (green1 - green0) / rate;
+        tempBlue -= (blue1 - blue0) / rate;
+        matrix.drawPixel(x, y, matrix.Color(tempRed, tempGreen, tempBlue));
+        if (colorCheck(matrix.Color(tempRed, tempGreen, tempBlue), matrix.Color(red0, green0, blue0))) {
+          fading = false;
+          zero = true;
+        }
+      }
+    }
+
+    bool colorCheck(uint16_t one, uint16_t two) {
+      int16_t temp = one - 2;
+      if (temp < 0) {
+        temp = temp * -1;
+      }
+      return temp < 100;
+    }
   
     int32_t pullx;
     int32_t pully;
     int8_t fixedX;
     int8_t fixedY;
-    int8_t xMom;
-    int8_t yMom;
     uint16_t color0;
     uint16_t color1;
+
+    uint8_t red0;
+    uint8_t green0;
+    uint8_t blue0;
+
+    uint8_t red1;
+    uint8_t green1;
+    uint8_t blue1;
+    
+    uint8_t tempRed;
+    uint8_t tempGreen;
+    uint8_t tempBlue;
+
     int8_t x;
     int8_t y;
+    int32_t fadeColor;
     bool zero = true;
+    bool fading = false;
   
 };
 
@@ -228,7 +298,7 @@ void buildClock20Bit() {
     BitDots[i].setFixedLocation(x, y);
     uint16_t color0 = matrix.Color(25, 25, 25);
     uint16_t color1 = matrix.Color(50, 25, 0);
-    BitDots[i].setColor(color0, color1);
+    BitDots[i].setColor(25, 25, 25, 50, 25, 0);
     realtor[x][y] = true;
   }
 }
