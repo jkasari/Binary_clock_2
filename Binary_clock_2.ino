@@ -77,20 +77,11 @@ class BitDot {
       x = fixedX;
       y = fixedY;
     }
-    
-    void setColor(uint16_t newCol0, uint16_t newCol1) {
+
+    void setColor(uint32_t newCol0, uint32_t newCol1) {
       color0 = newCol0;
       color1 = newCol1;
-    }
-
-    void setColor(uint8_t newR0, uint8_t newG0, uint8_t newB0, uint8_t newR1, uint8_t newG1, uint8_t newB1) {
-      red0 = newR0;
-      green0 = newG0;
-      blue0 = newB0;
-
-      red1 = newR1;
-      green1 = newG1;
-      blue1 = newB1;
+      getRGBValues();
     }
 
 
@@ -185,13 +176,33 @@ class BitDot {
       }
       return temp < 100;
     }
+
+    void getRGBValues() {
+      red0 = splitColor(color0, 'r');
+      green0 = splitColor(color0, 'g');
+      blue0 = splitColor(color0, 'b');
+      red1 = splitColor(color1, 'r');
+      green1 = splitColor(color1, 'g');
+      blue1 = splitColor(color1, 'b');
+
+    }
+
+
+  uint8_t splitColor ( uint32_t c, char value ) {
+     switch ( value ) {
+      case 'r': return uint8_t(c >> 16);
+      case 'g': return uint8_t(c >>  8);
+      case 'b': return uint8_t(c >>  0);
+      default:  return 0;
+    }
+  }
   
     int32_t pullx;
     int32_t pully;
     int8_t fixedX;
     int8_t fixedY;
-    uint16_t color0;
-    uint16_t color1;
+    uint32_t color0;
+    uint32_t color1;
 
     uint8_t red0;
     uint8_t green0;
@@ -303,9 +314,9 @@ void buildClock20Bit() {
       y = 1;
     }
     BitDots[i].setFixedLocation(x, y);
-    uint16_t color0 = matrix.Color(25, 25, 25);
-    uint16_t color1 = matrix.Color(50, 25, 0);
-    BitDots[i].setColor(25, 25, 25, 50, 25, 0);
+    uint32_t color0 = buildColor(25, 25, 25);
+    uint32_t color1 = buildColor(50, 25, 0);
+    BitDots[i].setColor(color0, color1);
     realtor[x][y] = true;
   }
 }
@@ -579,4 +590,11 @@ void setClockMode() {
       buildClock16Bit();
       break;
   }
+}
+
+uint32_t buildColor(uint8_t r, uint8_t g, uint8_t b) {
+  uint32_t red   = (uint8_t)(r << 16);
+  uint16_t green = (uint8_t)(g <<  8);
+  uint8_t  blue  = (uint8_t)(b <<  0);
+  return; red+green+blue;
 }
