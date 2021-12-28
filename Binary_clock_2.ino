@@ -387,7 +387,7 @@ void buildClock3Byte() {
       }
     }
     BitDots[i].setFixedLocation(x, y);
-    BitDots[i].setColor(getColor3Byte(true, i), getColor3Byte(false, i));
+    setColor3Byte(i);
     realtor[x][y] = true;
   }
 }
@@ -425,14 +425,14 @@ void setDigitToByte(int8_t digit, int8_t dotIndex) {
   }
 }
 
-uint16_t getColor3Byte(bool zeroOrOne, int8_t index) {
+void setColor3Byte(int8_t index) {
   uint8_t brightness = 55;
   if (index < 8) {
-    return zeroOrOne ? matrix.Color(brightness / 2, 0, 0) : matrix.Color(brightness, brightness / 3, 0);
+    BitDots[index].setColor(brightness / 2, 0, 0, brightness, brightness / 3, 0);
   } else if (index < 16 && 8 <= index) {
-    return zeroOrOne ? matrix.Color(0, brightness / 2, 0) : matrix.Color(brightness / 2, brightness, brightness);
+    BitDots[index].setColor(0, brightness / 2, 0, brightness / 2, brightness, brightness);
   } else if (16 <= index) {
-    return zeroOrOne ? matrix.Color(0, 0, brightness) : matrix.Color(0, brightness  / 2, brightness);
+    BitDots[index].setColor(0, 0, brightness, 0, brightness / 2, brightness);
   }
 }
 
