@@ -42,6 +42,7 @@ uint8_t DOT_NUM = 0;
 size_t count = 0;
 int8_t mode = 0;
 int8_t modeLimit = 2;
+size_t timer = 0;
 
 
 class BitDot {
@@ -78,20 +79,49 @@ class BitDot {
       y = fixedY;
     }
     
-    int8_t getYVal() {
-      return y;
+    void setColor(uint16_t newCol0, uint16_t newCol1) {
+      color0 = newCol0;
+      color1 = newCol1;
     }
 
-    int8_t getXVal() {
-      return x;
+    void setColor(uint8_t newR0, uint8_t newG0, uint8_t newB0, uint8_t newR1, uint8_t newG1, uint8_t newB1) {
+      red0 = newR0;
+      green0 = newG0;
+      blue0 = newB0;
+
+      red1 = newR1;
+      green1 = newG1;
+      blue1 = newB1;
     }
-    
-    void setColor(uint16_t newCol) {
-      color = newCol;
-    }
+
 
     void displayDot() {
-      matrix.drawPixel(x, y, color);
+      if (fading) {
+        fadeDot();
+        matrix.drawPixel(x, y, matrix.Color(tempRed, tempGreen, tempBlue));
+      } else {
+        if (zero) {
+          matrix.drawPixel(x, y, matrix.Color(red0, green0, blue0));
+        } else {
+          matrix.drawPixel(x, y, matrix.Color(red1, green1, blue1));
+        }
+      }
+    }
+
+    void setZeroOrOne(bool pos) {
+      if (zero != pos) {
+        fading = true;
+        zero = pos;
+        if (!zero) {
+          tempRed = red0;
+          tempGreen = green0;
+          tempBlue = blue0;
+        } else {
+          tempRed = red1;
+          tempGreen = green1;
+          tempBlue = blue1;
+        }
+      }
     }
 
   private:
@@ -120,16 +150,67 @@ class BitDot {
       pullx += (xRead) / 4; // Increment how hard the dot is being pulled by the readings
       pully += (yRead)/ 4;
     }
+
+    void fadeDot() {
+      if (!zero) {
+        tempRed += getFadeDir(tempRed - red1);
+        tempGreen += getFadeDir(tempGreen - green1);
+        tempBlue += getFadeDir(tempBlue - blue1);
+        if (matrix.Color(tempRed, tempGreen, tempBlue) == matrix.Color(red1, green1, blue1)) {
+          fading = false;
+        }
+      } else {
+        tempRed += getFadeDir(tempRed - red0);
+        tempGreen += getFadeDir(tempGreen - green0);
+        tempBlue += getFadeDir(tempBlue - blue0);
+        if (matrix.Color(tempRed, tempGreen, tempBlue) == matrix.Color(red0, green0, blue0)) {
+          fading = false;
+        }
+      }
+    }
+    
+  int8_t getFadeDir(int8_t fadeGap) {
+    if (fadeGap > 0) {
+      return -1;
+    } else if (0 > fadeGap) {
+      return 1;
+    } else if (fadeGap == 0) {
+      return 0;
+    }
+  }
+
+    bool colorCheck(uint16_t one, uint16_t two) {
+      int16_t temp = one - 2;
+      if (temp < 0) {
+        temp = temp * -1;
+      }
+      return temp < 100;
+    }
   
     int32_t pullx;
     int32_t pully;
     int8_t fixedX;
     int8_t fixedY;
-    int8_t xMom;
-    int8_t yMom;
-    uint16_t color;
+    uint16_t color0;
+    uint16_t color1;
+
+    uint8_t red0;
+    uint8_t green0;
+    uint8_t blue0;
+
+    uint8_t red1;
+    uint8_t green1;
+    uint8_t blue1;
+    
+    uint8_t tempRed;
+    uint8_t tempGreen;
+    uint8_t tempBlue;
+
     int8_t x;
     int8_t y;
+    int32_t fadeColor;
+    bool zero = true;
+    bool fading = false;
   
 };
 
@@ -167,7 +248,8 @@ void loop() {
     adxl.readAccel(); // read all 3 axis, they are stored in class variables: myAdxl.x, myAdxl.y and myAdxl.z
   }
   DateTime now = rtc.now(); // Get the current date
-  PRReading = analogRead(PR);
+  PRReading = map(analogRead(PR), 0, 1023, 255, 80); // I honestly can't belive this works. Brightness check just pumps this adjusted reading value into the set brightness function.
+  brightnessCheck(count);
   if (buttonCheck()) {
     setClockMode();
   }
@@ -182,11 +264,11 @@ void loop() {
       setDotTime16Bit(now);
       break;
   }
-  if (!goGravityMode(adxl.x)) { // if the thing is getting tipped, lets party!!
-    count++;
-  } else {
+  if (goGravityMode(adxl.x)) { // if the thing is getting tipped, lets party!!
     gravityMode = true;
-    count = 1;
+    timer = 1;
+  } else {
+    timer++;
   }
   for (int i = 0; i < DOT_NUM; ++i) {
     if (gravityMode) {
@@ -194,10 +276,11 @@ void loop() {
     }
     BitDots[i].displayDot();
   }
-  if (!isAClock() && count == 500) { // if the dots are a mess and its time, reset the clock visual
+  if (!isAClock() && timer == 500) { // if the dots are a mess and its time, reset the clock visual
     gravityMode = false;
     resetDots();
   }
+  count ++; // Count vs timer. Count always counts up regardless of what the clock is doing, and timer is used in the gravity functionality.
   matrix.show();
 }
 
@@ -223,6 +306,9 @@ void buildClock20Bit() {
       y = 1;
     }
     BitDots[i].setFixedLocation(x, y);
+    uint16_t color0 = matrix.Color(25, 25, 25);
+    uint16_t color1 = matrix.Color(50, 25, 0);
+    BitDots[i].setColor(25, 20, 25, 50, 25, 0);
     realtor[x][y] = true;
   }
 }
@@ -237,9 +323,9 @@ void setDotTime20Bit(DateTime now) { // This desides what color to display the d
     int32_t powOfTwo = 0.5 + pow(2, i);
     if (temp - powOfTwo >=0 && temp !=  0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor20Bit(true));
+      BitDots[i].setZeroOrOne(false);
     } else {
-      BitDots[i].setColor(getColor20Bit(false));
+      BitDots[i].setZeroOrOne(true);
     }
   }
   
@@ -249,9 +335,9 @@ void setDotTime20Bit(DateTime now) { // This desides what color to display the d
     int32_t powOfTwo = 0.5 + pow(2, (i - 4));
     if (temp - powOfTwo >=0 && temp != 0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor20Bit(true));
+      BitDots[i].setZeroOrOne(false);
     } else {
-      BitDots[i].setColor(getColor20Bit(false));
+      BitDots[i].setZeroOrOne(true);
     }
   }
 
@@ -261,34 +347,26 @@ void setDotTime20Bit(DateTime now) { // This desides what color to display the d
     int32_t powOfTwo = 0.5 + pow(2, (i - 12));
     if (temp - powOfTwo >=0 && temp != 0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor20Bit(true));
+      BitDots[i].setZeroOrOne(false);
     } else {
-      BitDots[i].setColor(getColor20Bit(false));
+      BitDots[i].setZeroOrOne(true);
     }
-  }
-}
-
-uint16_t getColor20Bit(bool oneOrZero) { // This looks at the photo sensor and returns different color themes depending on brightness
- //Serial.println(PRReading);
- if (PRReading < HIGH_LIGHT) { //Messing with the set brightness function is a major pain. So here the brightness is adjusted manually but just putting in smaller values.
-    return oneOrZero ? matrix.Color(50, 20, 0) : matrix.Color(25, 25, 25);
-  } else if (PRReading < MED_LIGHT && HIGH_LIGHT <= PRReading) {
-    return oneOrZero ? matrix.Color(25, 8, 0) : matrix.Color(8, 4, 8);
-  } else if (MED_LIGHT <= PRReading) {
-    return oneOrZero ? matrix.Color(8, 0, 0) : matrix.Color(0, 4, 0);
   }
 }
 
 
 /**
- * ====================================Byte Clock Logic====================================== 
- * 
+ * ====================================3 Byte Clock Logic====================================== 
+ * This gives out three 2X4 rectangles on the matrix. first on is red, second is green and third is blue. 
+ * The red is hours, green is minutes and blue is seconds.
+ * This is in digital format. So each 4bits represents a single digit out of a 6 digit clock display. 
  */
 
+// Sets all the fixed x y values and sets the colors for the 3 byte clock.
 void buildClock3Byte() {
   uint8_t x;
   uint8_t y;
-  uint16_t color = 0;
+  uint16_t color = 0; 
   for (int i = 0; i < DOT_NUM; ++i) {
     if (i < 8) {
       if (i < 4) {
@@ -316,6 +394,7 @@ void buildClock3Byte() {
       }
     }
     BitDots[i].setFixedLocation(x, y);
+    setColor3Byte(i);
     realtor[x][y] = true;
   }
 }
@@ -326,13 +405,11 @@ void setDotTime3Byte(DateTime now) { // This desides what color to display the d
   int8_t temp2nd = now.hour() % 10;
   setDigitToByte(temp1st, 0);
   setDigitToByte(temp2nd, 4);
-  
 // Set the bits for the minutes
   temp1st = floor(now.minute() / 10);
   temp2nd = now.minute() % 10;
   setDigitToByte(temp1st, 8);
   setDigitToByte(temp2nd, 12);
-
 // set the bits for the seconds
   temp1st = floor(now.second() / 10);
   temp2nd = now.second() % 10;
@@ -347,34 +424,30 @@ void setDigitToByte(int8_t digit, int8_t dotIndex) {
     int8_t check = digit - powOfTwo;
     int8_t adjustedIndex = i + dotIndex;
     if (check >= 0) {
-      BitDots[adjustedIndex].setColor(getColor3Byte(true, adjustedIndex));
+      BitDots[adjustedIndex].setZeroOrOne(false);
       digit = check;
     } else {
-      BitDots[adjustedIndex].setColor(getColor3Byte(false, adjustedIndex));
+      BitDots[adjustedIndex].setZeroOrOne(true);
     }
   }
 }
 
-uint16_t getColor3Byte(bool oneOrZero, int8_t index) {
-  uint8_t brightness = 0;
-  if (PRReading < HIGH_LIGHT) { //Messing with the set brightness function is a major pain. So here the brightness is adjusted manually but just putting in smaller values.
-    brightness = 60;
-  } else if (PRReading < MED_LIGHT && HIGH_LIGHT <= PRReading) {
-    brightness = 30;
-  } else if (MED_LIGHT <= PRReading) {
-    brightness = 20;
-  }
+void setColor3Byte(int8_t index) { // Sets the fixed colors for all the dots needed to build ths clock
+  uint8_t brightness = 55;
   if (index < 8) {
-    return !oneOrZero ? matrix.Color(brightness / 2, 0, 0) : matrix.Color(brightness, brightness / 3, 0);
+    BitDots[index].setColor(brightness / 2, 0, 0, brightness, brightness / 3, 0);
   } else if (index < 16 && 8 <= index) {
-    return !oneOrZero ? matrix.Color(0, brightness / 2, 0) : matrix.Color(brightness / 2, brightness, brightness);
+    BitDots[index].setColor(0, brightness / 2, 0, brightness / 2, brightness, brightness);
   } else if (16 <= index) {
-    return !oneOrZero ? matrix.Color(0, 0, brightness) : matrix.Color(0, brightness  / 2, brightness);
+    BitDots[index].setColor(0, 0, brightness, 0, brightness / 2, brightness);
   }
 }
 
 /**
  * ====================================16Bit Clock Logic====================================== 
+ * This is the almost the same as the 20bit clock, the differences are. 
+ * This one only displays 6bits for minutes and seconds.
+ * This one displays hours in red, minutes in green and seconds in blue. 
  * 
  */
 
@@ -394,6 +467,7 @@ void buildClock16Bit() {
       y = 1;
     }
     BitDots[i].setFixedLocation(x, y);
+    BitDots[i].setColor(getColor16Bit(true, i), getColor16Bit(false, i));
     realtor[x][y] = true;
   }
 }
@@ -408,52 +482,45 @@ void setDotTime16Bit(DateTime now) { // This desides what color to display the d
     int32_t powOfTwo = 0.5 + pow(2, i);
     if (temp - powOfTwo >=0 && temp !=  0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor16Bit(true, i));
+      BitDots[i].setZeroOrOne(false);
     } else {
-      BitDots[i].setColor(getColor16Bit(false, i));
+      BitDots[i].setZeroOrOne(true);
     }
   }
-  
+
 // Set the bits for the minutes
   temp = now.minute();
   for (int i = 9; i >= 4; --i) {
     int32_t powOfTwo = 0.5 + pow(2, (i - 4));
     if (temp - powOfTwo >=0 && temp != 0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor16Bit(true, i));
+      BitDots[i].setZeroOrOne(false);
     } else {
-      BitDots[i].setColor(getColor16Bit(false, i));
+      BitDots[i].setZeroOrOne(true);
     }
   }
-
+  
 // set the bits for the seconds
   temp = now.second();
   for (int i = 15; i >= 10; --i) {
     int32_t powOfTwo = 0.5 + pow(2, (i - 10));
     if (temp - powOfTwo >=0 && temp != 0) {
       temp -= powOfTwo;
-      BitDots[i].setColor(getColor16Bit(true, i));
+      BitDots[i].setZeroOrOne(false);
     } else {
-      BitDots[i].setColor(getColor16Bit(false, i));
+      BitDots[i].setZeroOrOne(true);
     }
   }
 }
 
-uint16_t getColor16Bit(bool oneOrZero, int8_t index) {
-  uint8_t brightness = 0;
-  if (PRReading < HIGH_LIGHT) { //Messing with the set brightness function is a major pain. So here the brightness is adjusted manually but just putting in smaller values.
-    brightness = 60;
-  } else if (PRReading < MED_LIGHT && HIGH_LIGHT <= PRReading) {
-    brightness = 30;
-  } else if (MED_LIGHT <= PRReading) {
-    brightness = 20;
-  }
+uint16_t getColor16Bit(bool zeroOrOne, int8_t index) { // This distributes the unique colors for hours minutes and second across the bitdot array.
+  uint8_t brightness = 55;
   if (index < 4) {
-    return !oneOrZero ? matrix.Color(brightness / 2, 0, 0) : matrix.Color(brightness, brightness / 3, 0);
+    BitDots[index].setColor(brightness / 2, 0, 0, brightness, brightness / 3, 0);
   } else if (index < 10 && 4 <= index) {
-    return !oneOrZero ? matrix.Color(0, brightness / 2, 0) : matrix.Color(brightness / 2, brightness, brightness);
+    BitDots[index].setColor(0, brightness / 2, 0, brightness / 2, brightness, brightness);
   } else if (10 <= index) {
-    return !oneOrZero ? matrix.Color(0, 0, brightness) : matrix.Color(0, brightness  / 2, brightness);
+    BitDots[index].setColor(0, 0, brightness, 0, brightness / 2, brightness);
   }
 }
 
@@ -494,7 +561,7 @@ bool buttonCheck() {
   uint32_t halfSec = 500;
   if (digitalRead(BUTT_PIN) == LOW) {
     while(digitalRead(BUTT_PIN) == LOW) {
-      buttonTimer += 1;
+      buttonTimer += 1; // Keep track of how long the button has been pressed for. 
       delay(1);
     }
     if (50 < buttonTimer && buttonTimer < halfSec) { mode += 1; }
@@ -507,7 +574,7 @@ bool buttonCheck() {
   return false; // No the mode has not been changed.
 }
 
-void setClockMode() {
+void setClockMode() { // Selects the clock you want to display based on what mode you are in. 
   switch(mode) {
     case 0:
       DOT_NUM = 20;
@@ -521,5 +588,17 @@ void setClockMode() {
       DOT_NUM = 16;
       buildClock16Bit();
       break;
+  }
+}
+
+// This checks the photo resistor and adjust the brightness accordingly
+void brightnessCheck(size_t count) { 
+  if (count % 10 == 0) { // This just takes a step in the direction needed. This creates a smoother brightnessfade. 
+    if (PRReading > PRReadingTemp) {
+      PRReadingTemp += 1;
+    } else if (PRReadingTemp > PRReading) {
+      PRReadingTemp -= 1;
+    }
+    matrix.setBrightness(PRReadingTemp); // The PRRreading variable has already been adjusted to somewhere in the range of 0-255 so it wont break anything.
   }
 }
