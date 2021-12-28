@@ -506,11 +506,11 @@ void setDotTime16Bit(DateTime now) { // This desides what color to display the d
 uint16_t getColor16Bit(bool zeroOrOne, int8_t index) {
   uint8_t brightness = 55;
   if (index < 4) {
-    return zeroOrOne ? matrix.Color(brightness / 2, 0, 0) : matrix.Color(brightness, brightness / 3, 0);
+    BitDots[index].setColor(brightness / 2, 0, 0, brightness, brightness / 3, 0);
   } else if (index < 10 && 4 <= index) {
-    return zeroOrOne ? matrix.Color(0, brightness / 2, 0) : matrix.Color(brightness / 2, brightness, brightness);
+    BitDots[index].setColor(0, brightness / 2, 0, brightness / 2, brightness, brightness);
   } else if (10 <= index) {
-    return zeroOrOne ? matrix.Color(0, 0, brightness) : matrix.Color(0, brightness  / 2, brightness);
+    BitDots[index].setColor(0, 0, brightness, 0, brightness / 2, brightness);
   }
 }
 
