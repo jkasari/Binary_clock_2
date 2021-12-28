@@ -97,6 +97,7 @@ class BitDot {
     void displayDot() {
       if (fading) {
         fadeDot();
+        matrix.drawPixel(x, y, matrix.Color(tempRed, tempGreen, tempBlue));
       } else {
         if (zero) {
           matrix.drawPixel(x, y, matrix.Color(red0, green0, blue0));
@@ -109,7 +110,8 @@ class BitDot {
     void setZeroOrOne(bool pos) {
       if (zero != pos) {
         fading = true;
-        if (zero) {
+        zero = pos;
+        if (!zero) {
           tempRed = red0;
           tempGreen = green0;
           tempBlue = blue0;
@@ -149,27 +151,32 @@ class BitDot {
     }
 
     void fadeDot() {
-      int8_t rate = 100;
-      if (zero) {
-        tempRed -= (red0 - red1) / rate;
-        tempGreen -= (green0 - green1) / rate;
-        tempBlue -= (blue0 - blue1) / rate;
-        matrix.drawPixel(x, y, matrix.Color(tempRed, tempGreen, tempBlue));
-        if (colorCheck(matrix.Color(tempRed, tempGreen, tempBlue), matrix.Color(red1, green1, blue1))) {
+      if (!zero) {
+        tempRed += getFadeDir(tempRed - red1);
+        tempGreen += getFadeDir(tempGreen - green1);
+        tempBlue += getFadeDir(tempBlue - blue1);
+        if (matrix.Color(tempRed, tempGreen, tempBlue) == matrix.Color(red1, green1, blue1)) {
           fading = false;
-          zero = false;
         }
       } else {
-        tempRed -= (red1 - red0) / rate;
-        tempGreen -= (green1 - green0) / rate;
-        tempBlue -= (blue1 - blue0) / rate;
-        matrix.drawPixel(x, y, matrix.Color(tempRed, tempGreen, tempBlue));
-        if (colorCheck(matrix.Color(tempRed, tempGreen, tempBlue), matrix.Color(red0, green0, blue0))) {
+        tempRed += getFadeDir(tempRed - red0);
+        tempGreen += getFadeDir(tempGreen - green0);
+        tempBlue += getFadeDir(tempBlue - blue0);
+        if (matrix.Color(tempRed, tempGreen, tempBlue) == matrix.Color(red0, green0, blue0)) {
           fading = false;
-          zero = true;
         }
       }
     }
+    
+  int8_t getFadeDir(int8_t fadeGap) {
+    if (fadeGap > 0) {
+      return -1;
+    } else if (0 > fadeGap) {
+      return 1;
+    } else if (fadeGap == 0) {
+      return 0;
+    }
+  }
 
     bool colorCheck(uint16_t one, uint16_t two) {
       int16_t temp = one - 2;
